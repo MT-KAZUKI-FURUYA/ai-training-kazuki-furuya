@@ -100,7 +100,17 @@ Hello, Taro
 **以下は受講者が記入してください**
 
 - 追加で確認した入力例：
+  - `python3 -m day01.app --name Taro`
+  - `python3 -m day01.app --name Taro --repeat 2`
+  - `python3 -m day01.app --name Taro --repeat 8 --format json`
+  - `python3 -m day01.app --name Taro --repeat 11`
+  - `python3 -m day01.app --name Furuya`
+  - `python3 -m day01.app --name FuFu --format json`
+
 - 発生したエラーと対処：
+  - `python` コマンドが見つからない場合は `python3` を使用した
+  -  `--name` 未指定で実行した場合、必須引数エラーになることを確認した
+  - `--repeat 0と11` は範囲外のためエラーになることを確認した
 
 ## 提出物
 
@@ -119,7 +129,42 @@ Hello, Taro
 調べたURLや、理解した要点をメモしてください。
 
 - Python仮想環境（venv等）
+  - `venv` は、プロジェクトごとにPythonの実行環境を分けるための仕組み。
+  - 仮想環境の有効化は `source .venv/bin/activate` で行う。
+
 - 依存管理（requirements/pyprojectの考え方）
+  - `pip install -r requirements.txt` で、必要なライブラリをまとめてインストールできる。
+
 - CLIの引数処理（例：argparse等）
+  - `argparse` は、コマンドライン引数を扱うためのPython標準ライブラリ。
+  - `argparse` を使うと、プログラム内で `args.name` や `args.repeat` のように値を扱える。
+  - 不正な入力があった場合、`argparse` が自動でエラーを出してくれる。
+  - `choices=["text", "json"]` のように指定すると、許可する値を制限できる。
+- コードの読み解き方
+  - 今回の `day01/app.py` では、最初に `main()` が呼ばれる。
+  - `main()` を上から読み、そこから呼ばれている `build_parser()`、`_validate_args()`、`run()` を順番に確認すると流れを追いやすい。
+  - 処理の流れ：
+```
+python3 -m day01.app
+  ↓
+main()
+  ↓
+build_parser()
+  ↓
+parser.parse_args()
+  ↓
+_validate_args()
+  ↓
+run()
+  ↓
+print()
+```
 - ログ（INFO/ERRORの使い分け）
+  - `INFO` は正常な処理の開始や設定値の確認に使う。
+  - `ERROR` は入力不備や例外など、問題が発生したときに使う。
+  - `print()` はユーザーに結果を見せるため、`logging` は実行状況や原因を追うために使う。
+
 - GitHub：ブランチ作成→PR→修正push
+  - 実務では `main` ブランチに直接pushせず、作業用ブランチを作って作業する。
+  - 変更後はコミットしてGitHubにpushし、Pull Requestを作成する。
+  - PR作成後に修正が必要な場合は、同じブランチに追加でpushするとPRに反映される。

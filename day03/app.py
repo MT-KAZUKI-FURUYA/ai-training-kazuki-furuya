@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 import sys
 from typing import Any, Dict, List
 
@@ -17,7 +18,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 def _validate_args(args: argparse.Namespace) -> None:
     """引数の簡易バリデーションを行います（入力不備は exit code=2）。"""
-    if not args.requirements:
+    if not args.requirements or not args.requirements.strip():
         raise ValueError("--requirements is required")
     if not (0 <= args.max_retry <= 3):
         raise ValueError("--max-retry must be between 0 and 3")
@@ -38,8 +39,65 @@ def generate_json(requirements: str) -> str:
     - 余計な前置き/後置きの文章を混ぜない
     - 壊れやすいので、プロンプトは短く・形式を固定する
     """
-    # TODO(TRAINEE): Generate a JSON string that passes validate_json().
-    raise NotImplementedError("Implement JSON generation")
+    region = os.getenv("AWS_REGION")
+    model_id = os.getenv("BEDROCK_MODEL_ID")
+    if not region:
+        raise RuntimeError("AWS_REGION is required")
+    if not model_id:
+        raise RuntimeError("BEDROCK_MODEL_ID is required")
+
+    try:
+        import boto3
+        from botocore.config import Config
+    except ImportError as e:
+        raise RuntimeError("boto3 is required: install dependencies with `pip install -r requirements.txt`") from e
+
+    prompt = f"""次の形式のJSONだけを出力してください。先頭は必ず {{、末尾は必ず }} にしてください。
+説明文、Markdown、コードフェンスは禁止です。
+
+{{
+  "title": "要約タイトル",
+  "tasks": [
+    {{"id": 1, "description": "作業内容", "acceptance_criteria": "完了条件"}}
+  ],
+  "risks": ["想定リスク"]
+}}
+条件: tasksは2〜3件、idは1からの連番、acceptance_criteriaは文字列。
+要件: {requirements.strip()}
+"""
+
+    client = boto3.client(
+        "bedrock-runtime",
+        region_name=region,
+        config=Config(retries={"max_attempts": 2, "mode": "standard"}),
+    )
+    response = client.converse(
+        modelId=model_id,
+        messages=[
+            {
+                "role": "user",
+                "content": [{"text": prompt}],
+            }
+        ],
+        inferenceConfig={
+            "temperature": 0.0,
+            "maxTokens": 1024,
+        },
+    )
+
+    content = response.get("output", {}).get("message", {}).get("content", [])
+    texts = [block["text"] for block in content if isinstance(block, dict) and "text" in block]
+    if not texts:
+        raise RuntimeError("Bedrock response did not contain assistant text")
+
+    text = "".join(texts).strip()
+    start = text.find("{")
+    end = text.rfind("}")
+    if start != -1 and end != -1:
+        text = text[start : end + 1]
+
+    obj = validate_json(text)
+    return json.dumps(obj, ensure_ascii=False, indent=2)
 
 
 def validate_json(text: str) -> Dict[str, Any]:

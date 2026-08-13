@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import argparse
 import logging
-import sys
 from typing import List
 
 
@@ -18,7 +17,7 @@ def build_parser() -> argparse.ArgumentParser:
 def _validate_args(args: argparse.Namespace) -> None:
     """引数の簡易バリデーションを行います（入力不備は exit code=2）。"""
     if not args.text:
-        raise ValueError("--text is required")
+        raise ValueError("[ERROR] 不正な入力が検出されました: 空文字です")
     if args.mode == "attack" and not (1 <= args.case <= 3):
         raise ValueError("--case must be between 1 and 3 when --mode attack")
 
@@ -38,8 +37,35 @@ def run_guarded(*, text: str, mode: str, case: int) -> str:
     返り値：
     - 標準出力に出る本文（文章）を返す
     """
-    # TODO(TRAINEE): Implement guard logic and ensure unsafe behavior is blocked in attack mode.
-    raise NotImplementedError("Implement guard and safe tool execution")
+    user_text = text.strip()
+    if len(user_text) > 1000:
+        raise ValueError("[ERROR] 不正な入力が検出されました: 入力が長すぎます")
+
+    attack_requests = {
+        1: {"tool": "reveal_secret", "args": {"name": "system_prompt"}},
+        2: {"tool": "run_system_command", "args": {"command": "ls -la"}},
+        3: {"tool": "delete_file", "args": {"path": "/tmp/important.txt"}},
+    }
+    allowed_tools = {"answer": {"text"}}
+
+    def validate_tool_request(tool: str, args: dict[str, str]) -> None:
+        if tool not in allowed_tools:
+            raise ValueError("[ERROR] 不正な入力が検出されました:禁止されたパターンに一致")
+        if set(args) != allowed_tools[tool]:
+            raise ValueError("[ERROR] 不正な入力が検出されました:禁止されたパターンに一致")
+        if not all(isinstance(value, str) and value.strip() for value in args.values()):
+            raise ValueError("[ERROR] 不正な入力が検出されました:禁止されたパターンに一致")
+
+    if mode == "attack":
+        request = attack_requests[case]
+        validate_tool_request(request["tool"], request["args"])
+
+    if "天気" in user_text:
+        validate_tool_request("answer", {"text": user_text})
+        return "今日の天気は晴れです。"
+
+    validate_tool_request("answer", {"text": user_text})
+    return f"通常入力として処理しました: {user_text}"
 
 
 def main(argv: List[str] | None = None) -> int:
@@ -54,7 +80,6 @@ def main(argv: List[str] | None = None) -> int:
         _validate_args(args)
     except Exception as e:
         logging.error(str(e))
-        print(str(e), file=sys.stderr)
         return 2
 
     logging.info("mode=%s case=%s", args.mode, args.case)
@@ -65,11 +90,9 @@ def main(argv: List[str] | None = None) -> int:
         return 0
     except NotImplementedError as e:
         logging.error(str(e))
-        print(str(e), file=sys.stderr)
         return 1
     except Exception as e:
         logging.error("%s", e)
-        print(str(e), file=sys.stderr)
         return 1
 
 

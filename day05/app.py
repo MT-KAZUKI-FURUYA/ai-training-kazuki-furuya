@@ -35,29 +35,8 @@ def answer_with_rag(question: str) -> str:
     - 最初は単純なキーワード検索でもOK（高品質でなくてよい）
     - ヒットがない場合の挙動を必ず実装する
     """
-    import re
-    from pathlib import Path
-
-    data_dir = Path(__file__).resolve().parent / "data"
-    query_words = re.findall(r"[A-Za-z0-9_]+|[一-龥ぁ-んァ-ヶー]+", question.lower())
-
-    matches: list[tuple[int, str, str]] = []
-    for path in sorted(data_dir.glob("*.txt")):
-        text = path.read_text(encoding="utf-8")
-        chunks = [chunk.strip() for chunk in re.split(r"\n\s*\n", text) if chunk.strip()]
-        for chunk in chunks:
-            lower_chunk = chunk.lower()
-            score = sum(1 for word in query_words if word in lower_chunk)
-            if score > 0:
-                excerpt = re.sub(r"\s+", " ", chunk)[:120]
-                matches.append((score, f"day05/data/{path.name}", excerpt))
-
-    if not matches:
-        return "Answer: 該当する根拠が見つかりませんでした。質問に関係するデータを day05/data/ に追加してください。\nSources:\n- (none)"
-
-    matches.sort(key=lambda item: item[0], reverse=True)
-    _, source, excerpt = matches[0]
-    return f'Answer: 見つかった根拠では、{excerpt}\nSources:\n- {source} (excerpt: "{excerpt}")'
+    # TODO(TRAINEE): Implement retrieval from day05/data and return Answer/Sources formatted text.
+    raise NotImplementedError("Implement RAG")
 
 
 def main(argv: List[str] | None = None) -> int:

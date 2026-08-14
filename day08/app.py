@@ -35,8 +35,41 @@ def run_graph(*, text: str, max_steps: int, max_retry: int) -> str:
     - `max_steps` / `max_retry` を上限として必ず反映し、無限ループを防ぐ
     - 上限到達時は明示的に失敗（例外）してよい（mainがexit code=1にする）
     """
-    # TODO(TRAINEE): Add retry/fallback logic and enforce max_steps/max_retry.
-    raise NotImplementedError("Implement retry/fallback flow")
+    import json
+
+    steps = 0
+    retry_count = 0
+
+    def use_step(step_name: str) -> None:
+        nonlocal steps
+        steps += 1
+        logging.info("step=%s (%s/%s)", step_name, steps, max_steps)
+        if steps > max_steps:
+            raise RuntimeError("最大ステップ数に到達したため終了しました")
+
+    while True:
+        use_step("generate")
+        if "不完全なJSON" in text and retry_count == 0:
+            raw_response = '{"answer": "JSONの形式が壊れています"'
+        else:
+            raw_response = json.dumps({"answer": f"{text} への回答です。"}, ensure_ascii=False)
+
+        use_step("parse")
+        try:
+            parsed = json.loads(raw_response)
+        except json.JSONDecodeError:
+            if retry_count >= max_retry:
+                raise RuntimeError("JSONのパースに失敗し、最大リトライ回数に到達しました")
+            retry_count += 1
+            logging.info("JSON parse failed. retry=%s/%s", retry_count, max_retry)
+            continue
+
+        use_step("search")
+        if "存在しない情報" in text:
+            logging.info("search result is empty. use fallback response")
+            return "検索結果が見つかりませんでした。条件を変えてもう一度質問してください。"
+
+        return parsed["answer"]
 
 
 def main(argv: List[str] | None = None) -> int:

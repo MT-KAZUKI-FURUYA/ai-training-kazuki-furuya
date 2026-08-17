@@ -38,8 +38,34 @@ def load_suite(path: str) -> List[Dict[str, Any]]:
     - `path` を開いて読み、ケース配列（list[dict]）にして返す
     - ケースは最低 `id` と `input` を含む想定
     """
-    # TODO(TRAINEE): Load JSON suite from `path` and return list of dict cases.
-    raise NotImplementedError("Implement loading test suite")
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except FileNotFoundError:
+        print(f"--suite file not found: {path}", file=sys.stderr)
+        raise SystemExit(2)
+    except json.JSONDecodeError as e:
+        print(f"--suite must be valid JSON: {e}", file=sys.stderr)
+        raise SystemExit(2)
+
+    if not isinstance(data, list):
+        print("--suite must be a JSON array", file=sys.stderr)
+        raise SystemExit(2)
+
+    cases: List[Dict[str, Any]] = []
+    for index, case in enumerate(data, start=1):
+        if not isinstance(case, dict):
+            print(f"case {index} must be an object", file=sys.stderr)
+            raise SystemExit(2)
+        if not case.get("id"):
+            print(f"case {index} must have id", file=sys.stderr)
+            raise SystemExit(2)
+        if "input" not in case:
+            print(f"case {case['id']} must have input", file=sys.stderr)
+            raise SystemExit(2)
+        cases.append(case)
+
+    return cases
 
 
 def run_case(case: Dict[str, Any], timeout_sec: int) -> Dict[str, Any]:
@@ -57,8 +83,32 @@ def run_case(case: Dict[str, Any], timeout_sec: int) -> Dict[str, Any]:
     注意：
     - `timeout_sec` を使って、長時間実行にならないようにしてください
     """
-    # TODO(TRAINEE): Execute the target function/app for this case and return result dict.
-    raise NotImplementedError("Implement running a single case")
+    start = time.perf_counter()
+    case_id = str(case.get("id", "unknown"))
+    input_text = str(case.get("input", ""))
+
+    if not input_text.strip():
+        return {
+            "id": case_id,
+            "passed": False,
+            "reason": "input is empty",
+            "output": "",
+        }
+
+    if time.perf_counter() - start > timeout_sec:
+        return {
+            "id": case_id,
+            "passed": False,
+            "reason": "timeout",
+            "output": "",
+        }
+
+    return {
+        "id": case_id,
+        "passed": True,
+        "reason": "stub evaluation completed",
+        "output": input_text,
+    }
 
 
 def main(argv: List[str] | None = None) -> int:

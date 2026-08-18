@@ -23,7 +23,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 def _validate_args(args: argparse.Namespace) -> None:
     """引数の簡易バリデーションを行います（入力不備は exit code=2）。"""
-    if not args.prompt:
+    if not args.prompt or not args.prompt.strip():
         raise ValueError("--prompt is required")
     if not (0.0 <= args.temperature <= 1.0):
         raise ValueError("--temperature must be between 0.0 and 1.0")
@@ -57,8 +57,86 @@ def invoke_bedrock(
     - 認証/権限/ネットワーク/タイムアウトなどは例外として投げてOK
      （main側で終了コード=1にしてstderrへ出ます）
     """
-    # TODO(TRAINEE): Implement Bedrock invocation and return the assistant text only.
-    raise NotImplementedError("Implement Bedrock invocation")
+    try:
+        import boto3
+        from botocore.config import Config
+        from botocore.exceptions import (
+            BotoCoreError,
+            ClientError,
+            ConnectTimeoutError,
+            ConnectionClosedError,
+            EndpointConnectionError,
+            NoCredentialsError,
+            PartialCredentialsError,
+            ReadTimeoutError,
+        )
+    except ImportError as e:
+        raise RuntimeError("boto3 is required: install dependencies with `pip install -r requirements.txt`") from e
+
+    client = boto3.client(
+        "bedrock-runtime",
+        region_name=region,
+        config=Config(
+            connect_timeout=timeout_sec,
+            read_timeout=timeout_sec,
+            retries={"max_attempts": 2, "mode": "standard"},
+        ),
+    )
+
+    try:
+        response = client.converse(
+            modelId=model_id,
+            messages=[
+                {
+                    "role": "user",
+                    "content": [{"text": prompt}],
+                }
+            ],
+            inferenceConfig={
+                "temperature": temperature,
+                "maxTokens": max_tokens,
+            },
+        )
+    except (NoCredentialsError, PartialCredentialsError) as e:
+        raise RuntimeError(
+            "AWS authentication failed: credentials were not found or are incomplete. "
+            "Check AWS_PROFILE, AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY, or ~/.aws/credentials."
+        ) from e
+    except (ConnectTimeoutError, ReadTimeoutError) as e:
+        raise RuntimeError(
+            f"Bedrock request timed out after {timeout_sec} seconds. "
+            "Check network connectivity, region, model availability, or increase --timeout-sec."
+        ) from e
+    except (EndpointConnectionError, ConnectionClosedError) as e:
+        raise RuntimeError(
+            f"Bedrock network connection failed for region={region}. "
+            "Check network connectivity, proxy/VPN settings, and AWS_REGION."
+        ) from e
+    except ClientError as e:
+        error = e.response.get("Error", {})
+        code = error.get("Code", "Unknown")
+        message = str(error.get("Message", str(e))).rstrip(".")
+        if code in {
+            "AccessDeniedException",
+            "AccessDenied",
+            "UnauthorizedOperation",
+            "UnrecognizedClientException",
+            "ExpiredTokenException",
+            "InvalidSignatureException",
+        }:
+            raise RuntimeError(
+                f"AWS authorization/authentication failed ({code}): {message}. "
+                "Check IAM permissions for bedrock:InvokeModel, AWS_PROFILE, and token validity."
+            ) from e
+        raise RuntimeError(f"Bedrock invocation failed ({code}): {message}") from e
+    except BotoCoreError as e:
+        raise RuntimeError(f"Bedrock SDK error ({type(e).__name__}): {e}") from e
+
+    content = response.get("output", {}).get("message", {}).get("content", [])
+    texts = [block["text"] for block in content if isinstance(block, dict) and "text" in block]
+    if not texts:
+        raise RuntimeError("Bedrock response did not contain assistant text")
+    return "".join(texts).strip()
 
 
 def main(argv: List[str] | None = None) -> int:
@@ -68,6 +146,8 @@ def main(argv: List[str] | None = None) -> int:
     """
     load_dotenv()
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
+    logging.getLogger("boto3").setLevel(logging.WARNING)
+    logging.getLogger("botocore").setLevel(logging.WARNING)
     parser = build_parser()
     args = parser.parse_args(argv)
 
@@ -118,7 +198,7 @@ def main(argv: List[str] | None = None) -> int:
         print(str(e), file=sys.stderr)
         return 1
     except Exception as e:
-        logging.error("%s", e)
+        logging.error("%s: %s", type(e).__name__, e)
         print(str(e), file=sys.stderr)
         return 1
 

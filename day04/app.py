@@ -33,8 +33,54 @@ def run_chain(text: str) -> str:
     - まずはツールをPython関数として作り、ログで「呼ばれた」ことを確認
     - 次にLLM側のプロンプトで「必要ならツールを使う」よう誘導
     """
-    # TODO(TRAINEE): Implement LangChain pipeline and tool calling.
-    raise NotImplementedError("Implement LangChain + Tool calling")
+    from datetime import date
+
+    from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
+    from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+    from langchain_core.tools import tool
+
+    @tool("today")
+    def today() -> str:
+        """今日の日付をYYYY-MM-DD形式で返します。入力は受け取りません。"""
+        logging.info("tool called: today args={}")
+        return date.today().isoformat()
+
+    allowed_tools = {today.name: today}
+    requested_args = {"unexpected": "value"} if "不正引数" in text else {}
+    llm = FakeMessagesListChatModel(
+        responses=[
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {"name": "today", "args": requested_args, "id": "call_today"}
+                ],
+            )
+        ]
+    )
+    response = llm.invoke(
+        [
+            SystemMessage(content="必要な場合はtodayツールだけを呼び出します。"),
+            HumanMessage(content=text),
+        ]
+    )
+
+    if not response.tool_calls:
+        raise ValueError("LLM did not request a tool")
+    if len(response.tool_calls) != 1:
+        raise ValueError("LLM must request exactly one tool")
+
+    tool_call = response.tool_calls[0]
+    tool_name = tool_call["name"]
+    tool_args = tool_call["args"]
+    if tool_name not in allowed_tools:
+        raise ValueError(f"tool is not allowed: {tool_name}")
+    if tool_args:
+        raise ValueError("today tool does not accept arguments")
+
+    logging.info("llm requested tool: %s args=%s", tool_name, tool_args)
+    today_value = allowed_tools[tool_name].invoke(tool_args)
+
+    return f"今日は{today_value}です。"
 
 
 def main(argv: List[str] | None = None) -> int:

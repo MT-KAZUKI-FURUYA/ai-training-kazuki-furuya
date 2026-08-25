@@ -5,7 +5,10 @@ from typing import Any, Dict
 
 import streamlit as st
 
-from final.agent import run_agent
+try:
+    from final.agent import run_agent
+except ModuleNotFoundError:
+    from agent import run_agent
 
 
 st.set_page_config(page_title="AI Agent Chat", layout="centered")
